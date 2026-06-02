@@ -121,7 +121,10 @@ class Model(nn.Module):
         # Regression: physical signal — similarity, absolute diff magnitude, current magnitude
         diff_norm = torch.norm(f_diff, dim=1, keepdim=True)   # [B, 1]
         curr_norm = torch.norm(f_curr, dim=1, keepdim=True)   # [B, 1]
-        reg_in    = torch.cat([cos_sim.unsqueeze(1), diff_norm, curr_norm], dim=1)  # [B, 3]
-        vis_pred  = torch.sigmoid(self.vis_head(reg_in)).squeeze(1) * 9.0 + 1.0    # [B], [1,10]
+        # Normalize norms to O(1) so vis_head input doesn't saturate sigmoid
+        diff_norm_n = diff_norm / (diff_norm.detach().mean().clamp(min=1.0))
+        curr_norm_n = curr_norm / (curr_norm.detach().mean().clamp(min=1.0))
+        reg_in    = torch.cat([cos_sim.unsqueeze(1), diff_norm_n, curr_norm_n], dim=1)  # [B, 3]
+        vis_pred  = torch.sigmoid(self.vis_head(reg_in)).squeeze(1) * 9.0 + 1.0
 
         return cls_logits, vis_pred, cos_sim

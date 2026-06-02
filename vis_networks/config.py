@@ -39,7 +39,7 @@ CONFIG = {
     'batch_size': 16,
     'loss_func': SimilarityVisibilityLoss(),
     'OptimizerClass': torch.optim.Adam,
-    'optimizer_params': { 'lr': 1e-5 },
+    'optimizer_params': { 'lr': 1e-3 },
     #'scheduler_class': sched.ReduceLROnPlateau,
     #'scheduler_params': {'mode': 'min', 'factor': 0.5, 'patience': 10, 'min_lr': 1e-6},
     'output_func': None,
