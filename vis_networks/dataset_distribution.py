@@ -6,7 +6,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from pathlib import Path
 
-OUT = Path("../figs")
+OUT = Path("../vis_networks")
 OUT.mkdir(exist_ok=True)
 
 # Class labels (miles) and confirmed counts from dataset_stats.py
