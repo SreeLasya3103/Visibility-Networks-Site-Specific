@@ -22,8 +22,8 @@ BASE = os.path.dirname(os.path.abspath(__file__))
 
 # ---- Dataset root candidates (first one that exists wins) ------------------
 DSET_CANDIDATES = [
-    r"D:\Research - Lasya\NewWebcams",
-    r"D:/Research - Lasya/NewWebcams",
+    "D:\\Research - Lasya\\NewWebcams",
+    "D:\\Research - Lasya\\NewWebcams",
     "/data/NewWebcams",
     os.path.join(os.path.dirname(BASE), "NewWebcams"),
 ]
