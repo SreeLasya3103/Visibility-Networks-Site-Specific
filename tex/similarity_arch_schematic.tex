@@ -1,0 +1,142 @@
+% similarity_arch_schematic.tex
+% Compile: pdflatex similarity_arch_schematic.tex
+\documentclass[border=8pt,tikz]{standalone}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,fit,backgrounds,calc}
+
+\begin{document}
+\begin{tikzpicture}[
+  font=\sffamily\small,
+  every node/.style={align=center},
+  inp/.style   ={rectangle, draw=black!70, fill=gray!10,
+                 minimum width=24mm, minimum height=10mm, inner sep=2pt},
+  back/.style  ={rectangle, rounded corners=2pt, draw=black!70,
+                 fill=blue!12, minimum width=30mm, minimum height=11mm, inner sep=2pt},
+  proj/.style  ={rectangle, rounded corners=2pt, draw=black!70,
+                 fill=orange!30, minimum width=28mm, minimum height=10mm, inner sep=2pt},
+  op/.style    ={rectangle, rounded corners=2pt, draw=black!70,
+                 fill=yellow!25, minimum width=18mm, minimum height=8mm, inner sep=2pt},
+  head/.style  ={rectangle, rounded corners=2pt, draw=black!70,
+                 fill=green!22, minimum width=30mm, minimum height=10mm, inner sep=2pt},
+  out/.style   ={rectangle, draw=black!70, fill=gray!8,
+                 minimum width=28mm, minimum height=8mm, inner sep=2pt},
+  loss/.style  ={rectangle, rounded corners=2pt, draw=red!70!black,
+                 fill=red!10, minimum width=28mm, minimum height=8mm, inner sep=2pt,
+                 font=\sffamily\footnotesize},
+  sum/.style   ={circle, draw=black!70, fill=red!12, inner sep=0pt, minimum size=4mm},
+  arrow/.style ={-{Latex[length=1.4mm]}, thick, draw=black!70},
+  dashed/.style={dashed, draw=black!50, thick},
+]
+
+% -------- Two-branch inputs (top: current, bottom: reference) -------------
+\node[inp]                       (curr) {Current\\image};
+\node[inp, below=22mm of curr]   (ref)  {Reference\\(clear, $\geq$10~mi)};
+
+% -------- Shared frozen backbone (drawn twice, dashed link) ---------------
+\node[back, right=8mm of curr]   (b1) {VisNet backbone\\\textbf{(FROZEN)}\\$\to$ 3072-dim};
+\node[back, right=8mm of ref]    (b2) {VisNet backbone\\\textbf{(FROZEN)}\\$\to$ 3072-dim};
+\node[font=\sffamily\footnotesize, gray, rotate=90]
+     at ($(b1.south)!0.5!(b2.north)$) {shared weights};
+\draw[dashed] (b1.south) -- (b2.north);
+
+% -------- Feature vectors --------------------------------------------------
+\node[out, right=6mm of b1] (fcurr) {$\mathbf{f}_\text{curr}$\\(3072)};
+\node[out, right=6mm of b2] (fref)  {$\mathbf{f}_\text{ref}$\\(3072)};
+
+% Absolute difference
+\node[op, right=10mm of fref, yshift=10mm] (fdiff) {$|\mathbf{f}_\text{curr}-\mathbf{f}_\text{ref}|$};
+
+% -------- Shared projector (also dashed) ----------------------------------
+\node[proj, right=10mm of fcurr] (p1) {Projector\\Linear $3072\!\to\!128$, ReLU};
+\node[proj, right=10mm of fref]  (p2) {Projector\\Linear $3072\!\to\!128$, ReLU};
+\node[proj, right=10mm of fdiff] (p3) {Projector\\Linear $3072\!\to\!128$, ReLU};
+\node[font=\sffamily\footnotesize, gray, rotate=90]
+     at ($(p1.south)!0.5!(p2.north)$) {shared weights};
+\draw[dashed] (p1.south) -- (p2.north);
+\draw[dashed] (p2.south) -- (p3.north);
+
+% -------- Embeddings ------------------------------------------------------
+\node[out, right=6mm of p1] (pcurr) {$\mathbf{p}_\text{curr}$\\(128)};
+\node[out, right=6mm of p2] (pref)  {$\mathbf{p}_\text{ref}$\\(128)};
+\node[out, right=6mm of p3] (pdiff) {$\mathbf{p}_\text{diff}$\\(128)};
+
+% -------- Heads (right-most column) ---------------------------------------
+\node[op,  right=12mm of pref] (cos) {cosine\\$\cos(\mathbf{p}_\text{curr},\mathbf{p}_\text{ref})$};
+
+\node[head, above=8mm of cos]   (cls) {cls\_head\\$[\mathbf{p}_\text{curr};\mathbf{p}_\text{diff}]\!\to\! n_c$};
+\node[head, below=8mm of cos]   (vis) {vis\_head\\$[\cos,\tilde d,\tilde c]\!\to\!1\!\!-\!\!10$~mi};
+
+% -------- Outputs ---------------------------------------------------------
+\node[out, right=8mm of cls] (cls_out) {Class logits};
+\node[out, right=8mm of cos] (cos_out) {Cos.\ sim.};
+\node[out, right=8mm of vis] (vis_out) {Visibility (mi)};
+
+% -------- Loss summary ----------------------------------------------------
+\node[loss, below=8mm of vis_out, xshift=-4mm]
+     (lossbox) {$\mathcal{L}=\mathcal{L}_\text{CE}+0.1\,\mathcal{L}_\text{MSE}^\text{reg}+0.5\,\mathcal{L}_\text{MSE}^\text{cosim}$};
+
+% -------- Arrows ----------------------------------------------------------
+\draw[arrow] (curr) -- (b1);
+\draw[arrow] (ref)  -- (b2);
+\draw[arrow] (b1)   -- (fcurr);
+\draw[arrow] (b2)   -- (fref);
+
+% diff op
+\draw[arrow] (fcurr.east) -- ++(2mm,0) |- (fdiff.west);
+\draw[arrow] (fref.east)  -- ++(2mm,0) |- (fdiff.west);
+
+% to projectors
+\draw[arrow] (fcurr) -- (p1);
+\draw[arrow] (fref)  -- (p2);
+\draw[arrow] (fdiff) -- (p3);
+
+% projectors to embeddings
+\draw[arrow] (p1) -- (pcurr);
+\draw[arrow] (p2) -- (pref);
+\draw[arrow] (p3) -- (pdiff);
+
+% cosine inputs
+\draw[arrow] (pcurr.east) -- ++(2mm,0) |- (cos.west);
+\draw[arrow] (pref.east)  -- ++(2mm,0) |- (cos.west);
+
+% cls_head inputs
+\draw[arrow] (pcurr.east) -- ++(4mm,0) |- (cls.west);
+\draw[arrow] (pdiff.east) -- ++(4mm,0) |- (cls.west);
+
+% vis_head inputs
+\draw[arrow] (cos.south)  -- ++(0,-2mm) -| (vis.north);
+\draw[arrow] (pdiff.east) -- ++(6mm,0) |- (vis.west);
+\draw[arrow] (pcurr.east) -- ++(6mm,0) |- (vis.west);
+
+% outputs
+\draw[arrow] (cls) -- (cls_out);
+\draw[arrow] (cos) -- (cos_out);
+\draw[arrow] (vis) -- (vis_out);
+
+% loss arrows (red, dashed)
+\draw[-{Latex[length=1.2mm]}, dashed, red!70!black]
+      (cls_out.south) -- ++(0,-4mm) -| (lossbox.north);
+\draw[-{Latex[length=1.2mm]}, dashed, red!70!black]
+      (cos_out.south) -- ++(0,-4mm) -| (lossbox.north);
+\draw[-{Latex[length=1.2mm]}, dashed, red!70!black]
+      (vis_out.south) -- ++(0,-4mm) -| (lossbox.north);
+
+% -------- Labels ----------------------------------------------------------
+\node[above=2mm of b1, font=\sffamily\bfseries] {Shared frozen feature extractor};
+\node[above=2mm of p1, font=\sffamily\bfseries] {Shared trainable projector};
+\node[above=2mm of cls, font=\sffamily\bfseries] {Output heads};
+
+% -------- Legend ----------------------------------------------------------
+\begin{scope}[shift={($(ref.south west)+(0,-12mm)$)}, font=\sffamily\footnotesize]
+  \node[back, minimum width=10mm, minimum height=5mm] (lg1) {};
+  \node[right=1mm of lg1] {Frozen backbone};
+  \node[proj, minimum width=10mm, minimum height=5mm, right=18mm of lg1] (lg2) {};
+  \node[right=1mm of lg2] {Trainable projector};
+  \node[head, minimum width=10mm, minimum height=5mm, right=18mm of lg2] (lg3) {};
+  \node[right=1mm of lg3] {Trainable head};
+  \node[loss, minimum width=10mm, minimum height=5mm, right=14mm of lg3] (lg4) {};
+  \node[right=1mm of lg4] {Composite loss};
+\end{scope}
+
+\end{tikzpicture}
+\end{document}
