@@ -9,7 +9,7 @@ mpl.rcParams.update({"figure.dpi":300,"savefig.dpi":300,"font.family":"serif",
 CONFIGS=[("VisNet FT","VisNetFineTuneAndPredictionsResults/persite_results.csv"),
          ("RMEP FT","RMEPFineTuneAndPredictionsResults/persite_results.csv"),
          ("VisNet-Sim FT","VisNetSimilarityPersiteFineTuneResults/persite_results.csv")]
-TIERS=[(0.89,np.inf,"VEIA-level ($R^2>0.89$)","#2ca02c"),
+TIERS=[(0.89,np.inf,"Excellent ($R^2>0.89$)","#2ca02c"),
        (0.5,0.89,"Good (0.5–0.89)","#98df8a"),
        (0.0,0.5,"Fair (0–0.5)","#f4d03f"),
        (-np.inf,0.0,"Poor ($R^2<0$)","#d62728")]

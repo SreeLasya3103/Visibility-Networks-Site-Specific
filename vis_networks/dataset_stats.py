@@ -1,200 +1,56 @@
-"""
-dataset_stats.py
+# subset_stats.py  -- per-class counts of the BALANCED subset actually used.
+# Run:  python subset_stats.py            (defaults to D:\Research - Lasya\NewWebcams)
+#   or: python subset_stats.py --splits_dir "D:\Research - Lasya\NewWebcams"
+import argparse, os
+from collections import Counter
+from statistics import median
 
-Computes dataset statistics for the JASTP manuscript Table 1.
-
-Two modes:
-  1. DIRECT (preferred): scans image files under DSET_ROOT
-  2. FALLBACK: derives stats from predictions CSVs already in this directory
-
-Usage (from vis_networks/):
-    python dataset_stats.py
-    python dataset_stats.py --csv   # force fallback CSV mode
-"""
-
-import argparse
-import os
-import glob
-import numpy as np
-import pandas as pd
-
-BASE = os.path.dirname(os.path.abspath(__file__))
-
-# ---- Dataset root candidates (first one that exists wins) ------------------
-DSET_CANDIDATES = [
-    "D:\\Research - Lasya\\NewWebcams",
-    "D:\\Research - Lasya\\NewWebcams",
-    "/data/NewWebcams",
-    os.path.join(os.path.dirname(BASE), "NewWebcams"),
-]
-
-# ---- Predictions CSVs to aggregate when dataset root is unavailable --------
-PRED_CSVS = [
-    "VisNetFineTuneAndPredictionsResults/predictions.csv",
-    "RMEPFineTuneAndPredictionsResults/predictions.csv",
-    "VisNetSimilarityPersiteFineTuneResults/predictions.csv",
-    # Linux proxy names (fallback)
-    "finetune_results_with_prediction/predictions.csv",
-    "finetune_rmep_results_with_prediction/predictions.csv",
-    "persite_similarity_finetune/predictions.csv",
-]
-
-# ---- Visibility class definitions (matches cls_10full) ---------------------
-CLASS_GROUPS = [
-    {0.0, 1.0, 1.25, 1.5, 1.75},
-    {2.0, 2.25, 2.5},
-    {3.0}, {4.0}, {5.0}, {6.0}, {7.0}, {8.0}, {9.0}, {10.0},
-]
-CLASS_NAMES = ["≤1 mi", "2 mi", "3 mi", "4 mi", "5 mi",
-               "6 mi", "7 mi", "8 mi", "9 mi", "≥10 mi"]
-
-
-def parse_vis_from_filename(fname):
-    """Extract float visibility value from SITE{id}_ORNT{deg}_VIS{val}mi.png."""
-    try:
-        base = os.path.basename(fname)
-        seg = base.split('_')[2].split('.')[0]   # e.g. VIS10+mi or VIS4mi
-        val_str = seg.split('S')[1].split('m')[0].replace('-', '.')
-        return 10.0 if val_str == '10+' else min(float(val_str), 10.0)
-    except Exception:
-        return None
-
-
-def parse_site_from_filename(fname):
-    """Extract site ID from SITE{id}_ORNT{deg}_VIS{val}mi.png."""
-    try:
-        return os.path.basename(fname).split('_')[0]
-    except Exception:
-        return None
-
-
-def vis_to_class(vis):
-    for i, group in enumerate(CLASS_GROUPS):
-        if vis in group:
-            return i
-    return None
-
-
-def stats_from_images(dset_root):
-    print(f"Scanning images under: {dset_root}")
-    patterns = [
-        os.path.join(dset_root, "**", "*.png"),
-        os.path.join(dset_root, "**", "*.jpg"),
-        os.path.join(dset_root, "**", "*.jpeg"),
-    ]
-    files = []
-    for p in patterns:
-        files.extend(glob.glob(p, recursive=True))
-
-    if not files:
-        print("  No images found.")
-        return None
-
-    rows = []
-    for f in files:
-        site = parse_site_from_filename(f)
-        vis  = parse_vis_from_filename(f)
-        if site and vis is not None:
-            rows.append({"site": site, "vis": vis})
-
-    return pd.DataFrame(rows)
-
-
-def stats_from_csvs():
-    """Load all predictions CSVs and deduplicate by sample_path."""
-    dfs = []
-    for rel in PRED_CSVS:
-        p = os.path.join(BASE, rel)
-        if os.path.exists(p):
-            print(f"  Loading {rel}")
-            dfs.append(pd.read_csv(p))
-
-    if not dfs:
-        print("ERROR: No predictions CSVs found. Cannot compute stats.")
-        return None
-
-    combined = pd.concat(dfs, ignore_index=True)
-    # Keep unique images by sample_path
-    combined = combined.drop_duplicates(subset="sample_path")
-
-    rows = []
-    for _, row in combined.iterrows():
-        site = row.get("site_id", parse_site_from_filename(str(row["sample_path"])))
-        vis  = float(row["true_vis"])
-        rows.append({"site": site, "vis": vis})
-
-    return pd.DataFrame(rows)
-
-
-def print_stats(df):
-    total     = len(df)
-    n_sites   = df["site"].nunique()
-    per_site  = df.groupby("site").size()
-
-    print("\n" + "=" * 60)
-    print("DATASET STATISTICS")
-    print("=" * 60)
-    print(f"  Total images   : {total:,}")
-    print(f"  Total sites    : {n_sites}")
-    print(f"  Per-site mean  : {per_site.mean():.1f}")
-    print(f"  Per-site median: {per_site.median():.0f}")
-    print(f"  Per-site min   : {per_site.min()}")
-    print(f"  Per-site max   : {per_site.max()}")
-
-    # Class distribution
-    df["class"] = df["vis"].apply(vis_to_class)
-    class_counts = df["class"].value_counts().sort_index()
-
-    print("\n  Visibility class distribution:")
-    print(f"  {'Class':<10} {'Count':>8} {'%':>7}")
-    print("  " + "-" * 28)
-    for i, name in enumerate(CLASS_NAMES):
-        count = class_counts.get(i, 0)
-        pct   = count / total * 100 if total > 0 else 0
-        print(f"  {name:<10} {count:>8,} {pct:>6.1f}%")
-    print("  " + "-" * 28)
-    print(f"  {'TOTAL':<10} {total:>8,} {'100.0%':>7}")
-    print("=" * 60 + "\n")
-
-    # Table 1 copy-paste block for the manuscript
-    print("LaTeX snippet for Table 1 (paste into manuscript.tex):")
-    print("-" * 60)
-    for i, name in enumerate(CLASS_NAMES):
-        count = class_counts.get(i, 0)
-        pct   = count / total * 100 if total > 0 else 0
-        print(f"  {name} & {count:,} & {pct:.1f}\\% \\\\")
-    print(f"  \\midrule")
-    print(f"  Total & {total:,} & 100.0\\% \\\\")
-    print("-" * 60)
-    print(f"\nSummary line: {total:,} images across {n_sites} sites "
-          f"(mean {per_site.mean():.0f}, range {per_site.min()}–{per_site.max()} per site)\n")
-
+# ---- verbatim from dsets/webcams/cls_10full.py ----
+CLASS_NAMES  = ['1.0','2.0','3.0','4.0','5.0','6.0','7.0','8.0','9.0','10.0']
+CLASS_GROUPS = [{0.0,1.0,1.25,1.5,1.75},{2.0,2.25,2.5},{3.0},{4.0},{5.0},
+                {6.0},{7.0},{8.0},{9.0},{10.0}]
+# ---- verbatim from dsets/webcams/common.py ----
+def get_str_label(n): return n.split('_')[2].split('.')[0].split('S')[1].split('m')[0].replace('-', '.')
+def get_float_label(s): return 10.0 if s == '10+' else min(float(s), 10.0)
+def get_class_label(f):
+    for i, g in enumerate(CLASS_GROUPS):
+        if f in g: return i
+    return -1
+def path_from_line(line):
+    line = line.strip().strip('"')
+    if not line: return None
+    for tok in line.split(','):
+        if tok.lower().rstrip('"').endswith(('.png','.jpg','.jpeg')): return tok.strip().strip('"')
+    return line
+def site_of(p): return os.path.basename(p).split('_')[0]
+def classify(p):
+    try: return get_class_label(get_float_label(get_str_label(os.path.basename(p))))
+    except Exception: return -2
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--csv", action="store_true",
-                        help="Force CSV fallback mode (skip image scan)")
-    args = parser.parse_args()
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--splits_dir", default=r"D:\Research - Lasya\NewWebcams")
+    ap.add_argument("--files", nargs="+", default=["train.csv","validation.csv","test.csv"])
+    a = ap.parse_args()
+    combined = []
+    for fn in a.files:
+        fp = os.path.join(a.splits_dir, fn)
+        if not os.path.exists(fp): print(f"  [skip] {fp} not found"); continue
+        paths = [p for p in (path_from_line(l) for l in open(fp, encoding="utf-8")) if p]
+        combined += paths; print(f"  {fn:16s}: {len(paths):6d} paths")
+    if not combined: print("No split files found. Pass --splits_dir."); return
+    cls = [classify(p) for p in combined]
+    counts = Counter(c for c in cls if c >= 0); total = sum(counts.values())
+    print(f"\n  combined paths {len(combined)} | dropped {sum(1 for c in cls if c<0)} | classified {total}\n")
+    names = ["$\\leq$1~mi","2~mi","3~mi","4~mi","5~mi","6~mi","7~mi","8~mi","9~mi","$\\geq$10~mi"]
+    print("LaTeX rows for Table 2 (balanced subset):"); print("-"*46)
+    for i in range(10):
+        c = counts.get(i,0)
+        print(f"{names[i]:14s}& {c:>6} & {100*c/total:4.1f}\\% \\\\".replace(str(c), f"{c:,}".replace(",","{,}"),1))
+    print("\\midrule"); print(f"\\textbf{{Total}} & \\textbf{{{total:,}}}".replace(",","{,}") + " & \\textbf{100.0\\%} \\\\")
+    by_site = Counter(site_of(p) for p,c in zip(combined,cls) if c>=0)
+    elig = [n for n in by_site.values() if n>=20]
+    print("-"*46)
+    print(f"\n  sites total {len(by_site)} | sites>=20 {len(elig)} (expect 255) | median/site(>=20) {median(sorted(elig)):.0f} (expect 41)")
 
-    df = None
-
-    if not args.csv:
-        for candidate in DSET_CANDIDATES:
-            if os.path.isdir(candidate):
-                df = stats_from_images(candidate)
-                break
-        if df is None:
-            print("Dataset root not found. Falling back to predictions CSVs.")
-
-    if df is None:
-        df = stats_from_csvs()
-
-    if df is None or df.empty:
-        print("No data available. Check DSET_CANDIDATES or run an experiment first.")
-        return
-
-    print_stats(df)
-
-
-if __name__ == "__main__":
-    main()
+if __name__ == "__main__": main()
